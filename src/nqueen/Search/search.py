@@ -7,7 +7,6 @@ from Queen_init.queen_init import Queen
 from Board_init.board_init import Board
 import math
 class Search:
-
     @staticmethod
     def solve_nqueens_dfs(board: Board, row: int) -> bool:
         if row == board.size:
@@ -21,20 +20,6 @@ class Search:
                 board.remove_queen(row)
         return False
 
-    @staticmethod
-    def run_dfs(size: int):
-        board = Board(size)
-        start_time = perf_counter()
-        found = Search.solve_nqueens_dfs(board, 0)
-        end_time = perf_counter()
-        if found:
-            print(f"DFS solved! Depth: {len(board.queens)}")
-            print(f"Queens positions: {[ (q.row, q.col) for q in board.queens ]}")
-        else:
-            print("DFS no solution found.")
-        print(f"DFS Time elapsed: {end_time - start_time:.6f} seconds\n")
-
-    
     @staticmethod
     def hill_climbing(size: int, max_restarts: int = 1000):
         def compute_conflicts(positions):
@@ -71,68 +56,89 @@ class Search:
         return None
     
     @staticmethod
-    def simulated_annealing(size: int, max_steps: int = 10000, temperature: float = 100.0, cooling_rate: float = 0.99):
+    def simulated_annealing(size: int, max_steps: int = 200000, temperature: float = 100.0, cooling_rate: float = 0.995):
         def compute_conflicts(state):
             conflicts = 0
             for i in range(size):
                 for j in range(i + 1, size):
-                    if state[i] == state[j] or abs(state[i] - state[j]) == j - i:
+                    if abs(state[i] - state[j]) == abs(i - j):
                         conflicts += 1
             return conflicts
 
-        state = [random.randint(0, size - 1) for _ in range(size)]
+        state = list(range(size))
+        random.shuffle(state)
         current_conflicts = compute_conflicts(state)
+        best_state = state[:]
+        best_conflicts = current_conflicts
 
         for step in range(max_steps):
             if current_conflicts == 0:
                 return state
-            row = random.randint(0, size - 1)
-            new_col = random.randint(0, size - 1)
+
+            i, j = random.sample(range(size), 2)
             new_state = state[:]
-            new_state[row] = new_col
+            new_state[i], new_state[j] = new_state[j], new_state[i]
             new_conflicts = compute_conflicts(new_state)
             delta = new_conflicts - current_conflicts
 
             if delta < 0 or random.random() < math.exp(-delta / temperature):
                 state = new_state
                 current_conflicts = new_conflicts
+                if current_conflicts < best_conflicts:
+                    best_state = state[:]
+                    best_conflicts = current_conflicts
 
             temperature *= cooling_rate
 
-        return None
-    
+        return best_state if best_conflicts == 0 else None
+
+        
     @staticmethod
-    def genetic_algorithm(size: int, population_size: int = 100, generations: int = 1000, mutation_rate: float = 0.03):
+    def genetic_algorithm(size: int, population_size: int = 300, generations: int = 3000, mutation_rate: float = 0.1):
         def compute_fitness(state):
-            max_pairs = size * (size - 1) // 2
             conflicts = 0
             for i in range(size):
                 for j in range(i + 1, size):
-                    if state[i] == state[j] or abs(state[i] - state[j]) == j - i:
+                    if abs(state[i] - state[j]) == abs(i - j):
                         conflicts += 1
-            return max_pairs - conflicts
+            return -conflicts
 
         def crossover(parent1, parent2):
-            point = random.randint(1, size - 2)
-            child = parent1[:point] + parent2[point:]
+            size_ = len(parent1)
+            start, end = sorted(random.sample(range(size_), 2))
+            child = [None] * size_
+            child[start:end+1] = parent1[start:end+1]
+            fill_pos = (end + 1) % size_
+            p2_pos = (end + 1) % size_
+            while None in child:
+                if parent2[p2_pos] not in child:
+                    child[fill_pos] = parent2[p2_pos]
+                    fill_pos = (fill_pos + 1) % size_
+                p2_pos = (p2_pos + 1) % size_
             return child
 
         def mutate(state):
-            if random.random() < mutation_rate:
-                row = random.randint(0, size - 1)
-                col = random.randint(0, size - 1)
-                state[row] = col
-            return state
+            i, j = random.sample(range(size), 2)
+            state[i], state[j] = state[j], state[i]
 
-        population = [[random.randint(0, size - 1) for _ in range(size)] for _ in range(population_size)]
+        population = [random.sample(range(size), size) for _ in range(population_size)]
+
         for _ in range(generations):
-            population.sort(key=lambda s: -compute_fitness(s))
-            if compute_fitness(population[0]) == size * (size - 1) // 2:
-                return population[0]
-            new_population = population[:10]  # elitism
+            population.sort(key=compute_fitness, reverse=True)
+            best = population[0]
+            if compute_fitness(best) == 0:
+                return best
+
+            elite_count = max(10, population_size // 10)
+            new_population = population[:elite_count]
+
             while len(new_population) < population_size:
-                parent1, parent2 = random.choices(population[:50], k=2)
-                child = mutate(crossover(parent1, parent2))
+                p1, p2 = random.choices(population[:population_size//2], k=2)
+                child = crossover(p1, p2)
+                if random.random() < mutation_rate:
+                    mutate(child)
                 new_population.append(child)
+
             population = new_population
+        best = max(population, key=compute_fitness)
         return None
